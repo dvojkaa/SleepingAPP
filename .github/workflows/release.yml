@@ -41,6 +41,18 @@ jobs:
       - name: Nainstaluj XcodeGen
         run: brew install xcodegen
 
+      - name: Vyber nejnovější dostupné Xcode na runneru
+        run: |
+          ls /Applications | grep -i '^Xcode' || true
+          LATEST_XCODE=$(ls -d /Applications/Xcode_*.app 2>/dev/null | sort -V | tail -n1)
+          if [ -z "$LATEST_XCODE" ]; then
+            echo "::error::Na runneru nebyl nalezen žádný /Applications/Xcode_*.app"
+            exit 1
+          fi
+          echo "Vybírám $LATEST_XCODE"
+          sudo xcode-select -s "$LATEST_XCODE"
+          xcodebuild -version
+
       - name: Vygeneruj Xcode projekt
         run: xcodegen generate
 

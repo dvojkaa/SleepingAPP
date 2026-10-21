@@ -151,6 +151,15 @@ final class AudioMonitorService: NSObject {
         AVEncoderAudioQualityKey: AVAudioQuality.medium.rawValue
     ]
 
+    /// `AVAudioSession.setCategory`/`setActive` dělají synchronní XPC
+    /// round-trip na audio server a Apple na volání z hlavního vlákna
+    /// výslovně varuje (riziko zaseknutí UI). Appka je proto nikdy nevolá
+    /// přímo z hlavního vlákna, ale vždy přes tuhle vyhrazenou serial frontu
+    /// (ne sdílenou `DispatchQueue.global()`, ať se dvě activate/deactivate
+    /// volání nemůžou nikdy předběhnout) – viz `configureAudioSession(completion:)`
+    /// a `stopNight()`.
+    private let audioSessionQueue = DispatchQueue(label: "com.sleeptracker.audio-session", qos: .userInitiated)
+
     // MARK: - Publikovaný stav (čte ho UI)
 
     private(set) var isRecordingNight = false
@@ -192,33 +201,51 @@ final class AudioMonitorService: NSObject {
     // MARK: - Veřejné API
 
     /// Zahájí novou noc: nastaví zvukovou session, vytvoří složku pro noc
-    /// a spustí monitorování hlasitosti. Vrací ID nově vytvořené noci.
-    @discardableResult
-    func startNight() throws -> UUID {
+    /// a spustí monitorování hlasitosti. `completion` dostane ID nově
+    /// vytvořené noci, nebo chybu – vždy na hlavním vlákně.
+    ///
+    /// Asynchronní (ne `throws` volaná synchronně z UI), protože první krok
+    /// (`configureAudioSession`) dělá skutečnou práci na pozadí – viz
+    /// `audioSessionQueue`.
+    func startNight(completion: @escaping (Result<UUID, Error>) -> Void) {
         guard !isRecordingNight else {
-            throw AudioMonitorError.nightAlreadyInProgress
+            completion(.failure(AudioMonitorError.nightAlreadyInProgress))
+            return
         }
 
-        try configureAudioSession()
+        configureAudioSession { [weak self] result in
+            guard let self else { return }
+            switch result {
+            case .failure(let error):
+                completion(.failure(error))
+            case .success:
+                // `configureAudioSession` vrací výsledek už na hlavním vlákně
+                // (viz jeho implementace), takže tenhle zbytek startu noci
+                // může běžet přesně tak, jako by byl pořád synchronní.
+                self.finishStartingNight(completion: completion)
+            }
+        }
+    }
 
+    private func finishStartingNight(completion: @escaping (Result<UUID, Error>) -> Void) {
         let nightID = UUID()
-        let folder = try AudioFileLayout.nightFolderURL(nightID: nightID)
         do {
+            let folder = try AudioFileLayout.nightFolderURL(nightID: nightID)
             try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+
+            currentNightFolderURL = folder
+            newlyFinishedClips.removeAll()
+            lastErrorMessage = nil
+            monitorRestartFailureCount = 0
+
+            try startMonitorRecorder()
+            registerForAudioSessionNotifications()
+            startMeteringTimer()
+            isRecordingNight = true
+            completion(.success(nightID))
         } catch {
-            throw AudioMonitorError.recorderCreationFailed(error)
+            completion(.failure(AudioMonitorError.recorderCreationFailed(error)))
         }
-
-        currentNightFolderURL = folder
-        newlyFinishedClips.removeAll()
-        lastErrorMessage = nil
-        monitorRestartFailureCount = 0
-
-        try startMonitorRecorder()
-        registerForAudioSessionNotifications()
-        startMeteringTimer()
-        isRecordingNight = true
-        return nightID
     }
 
     /// Ukončí aktuální noc. Pokud zrovna probíhá nahrávání klipu, klip se
@@ -237,14 +264,15 @@ final class AudioMonitorService: NSObject {
         activeRecorder?.stop()
         activeRecorder = nil
 
-        do {
-            try AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
-        } catch {
-            // Appka noc i tak korektně uzavře – deaktivace sdílené session
-            // při úklidu po sobě není kritická (appka ji stejně příští noc
-            // znovu aktivuje v `configureAudioSession()`), proto zde chybu
-            // jen tiše ignorujeme a nepřepisujeme jí případnou předchozí
-            // (relevantnější) hlášku v `lastErrorMessage`.
+        // `setActive` dělá synchronní XPC round-trip na audio server – nikdy
+        // ji nevoláme na hlavním vlákně (viz `audioSessionQueue`). Appka na
+        // výsledek úmyslně nečeká: noc se má v UI uzavřít okamžitě a
+        // deaktivace sdílené session při úklidu po sobě není kritická (appka
+        // ji stejně příští noc znovu aktivuje v `configureAudioSession`),
+        // takže případnou chybu jen tiše zahodíme a nepřepíšeme jí případnou
+        // předchozí (relevantnější) hlášku v `lastErrorMessage`.
+        audioSessionQueue.async {
+            try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
         }
 
         // Scratch soubor monitorovacího nahrávače dál nemá smysl držet na disku.
@@ -272,13 +300,26 @@ final class AudioMonitorService: NSObject {
 
     // MARK: - Audio session
 
-    private func configureAudioSession() throws {
-        let session = AVAudioSession.sharedInstance()
-        do {
-            try session.setCategory(.record, mode: .default, options: [.allowBluetooth])
-            try session.setActive(true, options: .notifyOthersOnDeactivation)
-        } catch {
-            throw AudioMonitorError.audioSessionConfigurationFailed(error)
+    /// Nastaví kategorii a aktivuje `AVAudioSession`. Obě volání dělají
+    /// synchronní XPC round-trip na audio server, takže běží na
+    /// `audioSessionQueue`, ne na volajícím vlákně – `completion` se pak
+    /// zavolá vždy zpátky na hlavním vlákně, ať ho volající (UI akce,
+    /// zpracování přerušení...) může rovnou bezpečně použít k nastavení
+    /// publikovaného stavu nebo spuštění další práce.
+    private func configureAudioSession(completion: @escaping (Result<Void, Error>) -> Void) {
+        audioSessionQueue.async {
+            let session = AVAudioSession.sharedInstance()
+            let result: Result<Void, Error>
+            do {
+                try session.setCategory(.record, mode: .default, options: [.allowBluetooth])
+                try session.setActive(true, options: .notifyOthersOnDeactivation)
+                result = .success(())
+            } catch {
+                result = .failure(AudioMonitorError.audioSessionConfigurationFailed(error))
+            }
+            DispatchQueue.main.async {
+                completion(result)
+            }
         }
     }
 
@@ -340,11 +381,14 @@ final class AudioMonitorService: NSObject {
         case .ended:
             isInterrupted = false
             monitorRestartFailureCount = 0
-            do {
-                try configureAudioSession()
-                restartMonitorRecorderIfPossible()
-            } catch {
-                lastErrorMessage = "Nahrávání se po přerušení (hovor, budík…) nepodařilo obnovit: \(error.localizedDescription)"
+            configureAudioSession { [weak self] result in
+                guard let self else { return }
+                switch result {
+                case .success:
+                    self.restartMonitorRecorderIfPossible()
+                case .failure(let error):
+                    self.lastErrorMessage = "Nahrávání se po přerušení (hovor, budík…) nepodařilo obnovit: \(error.localizedDescription)"
+                }
             }
 
         @unknown default:
@@ -377,11 +421,14 @@ final class AudioMonitorService: NSObject {
         isInterrupted = false
         monitorRestartFailureCount = 0
 
-        do {
-            try configureAudioSession()
-            restartMonitorRecorderIfPossible()
-        } catch {
-            lastErrorMessage = "Po resetu zvukového systému se nepodařilo obnovit nahrávání: \(error.localizedDescription)"
+        configureAudioSession { [weak self] result in
+            guard let self else { return }
+            switch result {
+            case .success:
+                self.restartMonitorRecorderIfPossible()
+            case .failure(let error):
+                self.lastErrorMessage = "Po resetu zvukového systému se nepodařilo obnovit nahrávání: \(error.localizedDescription)"
+            }
         }
     }
 

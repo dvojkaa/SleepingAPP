@@ -126,19 +126,28 @@ struct RecordingView: View {
     }
 
     private func startNight() {
-        do {
-            let nightID = try audioMonitor.startNight()
-            let night = Night(id: nightID, startedAt: .now)
-            modelContext.insert(night)
-            currentNight = night
-            // Appka běží na pozadí klidně 8 hodin a systém ji teoreticky může
-            // kdykoliv ukončit (jetsam) – explicitní save hned po vytvoření
-            // noci minimalizuje riziko, že by se po pádu appky ztratil i
-            // samotný záznam o noci, ke kterému by jinak osiřelé .m4a
-            // soubory na disku neměly žádnou vazbu.
-            try? modelContext.save()
-        } catch {
-            audioMonitor.lastErrorMessage = error.localizedDescription
+        // `audioMonitor.startNight` je asynchronní (nastavuje AVAudioSession
+        // na vlastní frontě, ne na hlavním vlákně) – `modelContext` se proto
+        // vytáhne do lokální konstanty hned, dokud je RecordingView ještě
+        // nainstalované ve view hierarchii, stejně jako u klasifikace
+        // v `classifyAndStore`. V praxi completion dorazí prakticky okamžitě
+        // (jeden rychlý XPC round-trip), ale stejná opatrnost nic nestojí.
+        let context = modelContext
+        audioMonitor.startNight { result in
+            switch result {
+            case .success(let nightID):
+                let night = Night(id: nightID, startedAt: .now)
+                context.insert(night)
+                currentNight = night
+                // Appka běží na pozadí klidně 8 hodin a systém ji teoreticky
+                // může kdykoliv ukončit (jetsam) – explicitní save hned po
+                // vytvoření noci minimalizuje riziko, že by se po pádu appky
+                // ztratil i samotný záznam o noci, ke kterému by jinak
+                // osiřelé .m4a soubory na disku neměly žádnou vazbu.
+                try? context.save()
+            case .failure(let error):
+                audioMonitor.lastErrorMessage = error.localizedDescription
+            }
         }
     }
 
