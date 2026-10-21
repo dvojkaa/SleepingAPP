@@ -6,37 +6,95 @@ import AVFoundation
 struct NightDetailView: View {
     let night: Night
 
+    @Environment(\.modelContext) private var modelContext
+    /// Pro dohánění klipů zaseknutých ve stavu `.pending` – viz
+    /// `resumeStuckClassifications()`.
+    @State private var classifier = SoundClassifierService()
+
+    /// Řídí jemný fade-in grafu a seznamu klipů při otevření obrazovky.
+    @State private var hasAppeared = false
+
     private var sortedClips: [SoundClip] {
         night.clips.sorted { $0.timestamp < $1.timestamp }
     }
 
     var body: some View {
-        List {
-            Section {
-                summaryHeader
-            }
+        ZStack {
+            NightSkyBackgroundView()
 
-            if !sortedClips.isEmpty {
-                Section("Hlasitost v čase") {
-                    activityChart
-                        .frame(height: 220)
-                        .padding(.vertical, 8)
+            List {
+                Section {
+                    summaryHeader
+                        .listRowBackground(Color.white.opacity(0.06))
+                }
+
+                if !sortedClips.isEmpty {
+                    Section("Hlasitost v čase") {
+                        activityChart
+                            .frame(height: 220)
+                            .padding(.vertical, 8)
+                            .listRowBackground(Color.white.opacity(0.06))
+                    }
+                }
+
+                Section("Klipy (\(sortedClips.count))") {
+                    if sortedClips.isEmpty {
+                        Text("Během této noci nebyl zaznamenán žádný zvuk.")
+                            .foregroundStyle(.secondary)
+                            .listRowBackground(Color.white.opacity(0.06))
+                    } else {
+                        ForEach(sortedClips) { clip in
+                            ClipRow(clip: clip)
+                                .listRowBackground(Color.white.opacity(0.06))
+                        }
+                    }
                 }
             }
-
-            Section("Klipy (\(sortedClips.count))") {
-                if sortedClips.isEmpty {
-                    Text("Během této noci nebyl zaznamenán žádný zvuk.")
-                        .foregroundStyle(.secondary)
-                } else {
-                    ForEach(sortedClips) { clip in
-                        ClipRow(clip: clip)
-                    }
+            .scrollContentBackground(.hidden)
+            .opacity(hasAppeared ? 1 : 0)
+            .onAppear {
+                withAnimation(.easeOut(duration: 0.5)) {
+                    hasAppeared = true
                 }
             }
         }
         .navigationTitle(night.startedAt.formatted(date: .abbreviated, time: .omitted))
         .navigationBarTitleDisplayMode(.inline)
+        .onAppear {
+            resumeStuckClassifications()
+        }
+    }
+
+    /// Klasifikace klipu se normálně spouští jen jednou, hned po jeho vzniku
+    /// (`RecordingView.classifyAndStore`). Pokud appku systém nebo uživatel
+    /// ukončí dřív, než asynchronní klasifikace doběhne, klip by jinak zůstal
+    /// navždy ve stavu `.pending` ("Zpracovává se…") bez způsobu, jak to
+    /// opravit. Při každém otevření detailu noci proto appka takové klipy
+    /// zkusí doklasifikovat znovu.
+    private func resumeStuckClassifications() {
+        let pendingClips = sortedClips.filter { $0.category == .pending }
+        guard !pendingClips.isEmpty else { return }
+
+        // Stejný důvod jako v `RecordingView.classifyAndStore`: `modelContext`
+        // se vytáhne do lokální konstanty hned, dokud je view nainstalované,
+        // a zápis z completion closure se jistí přes `clip.modelContext != nil`
+        // pro případ, že by klip mezitím zmizel (smazaná noc apod.).
+        let context = modelContext
+        for clip in pendingClips {
+            guard let fileURL = clip.fileURL else {
+                clip.category = .other
+                try? context.save()
+                continue
+            }
+            classifier.classify(fileURL: fileURL) { outcome in
+                DispatchQueue.main.async {
+                    guard clip.modelContext != nil else { return }
+                    clip.category = outcome.category
+                    clip.classificationConfidence = outcome.confidence
+                    try? context.save()
+                }
+            }
+        }
     }
 
     private var activityChart: some View {
@@ -46,7 +104,7 @@ struct NightDetailView: View {
                 y: .value("Hlasitost nad tichem (dB)", max(0, clip.peakPower - AudioLevelScale.floorDB)),
                 width: .fixed(4)
             )
-            .foregroundStyle(Color.accentColor)
+            .foregroundStyle(Color.sleepTrackerAccent)
         }
         .chartXAxis {
             AxisMarks(values: .stride(by: .hour)) { _ in
@@ -86,7 +144,8 @@ private enum AudioLevelScale {
     static let floorDB: Float = -80
 }
 
-/// Jeden řádek se seznamem klipu, obsahuje vlastní play/pause tlačítko.
+/// Jeden řádek se seznamem klipu – play/pause tlačítko, čas/délka klipu a
+/// barevný badge s rozpoznaným typem zvuku.
 private struct ClipRow: View {
     let clip: SoundClip
     @State private var playback = ClipPlaybackController()
@@ -108,6 +167,8 @@ private struct ClipRow: View {
             }
 
             Spacer()
+
+            CategoryBadge(category: clip.category)
         }
         .padding(.vertical, 2)
         .alert("Přehrávání selhalo", isPresented: errorAlertBinding) {
@@ -137,6 +198,38 @@ private struct ClipRow: View {
             return
         }
         playback.toggle(url: url)
+    }
+}
+
+/// Malý barevný "chip" s ikonou a českým názvem rozpoznaného typu zvuku
+/// (viz `SoundCategory`/`SoundClassifierService`). Barvy jsou jen vizuální
+/// odlišení v UI, nejsou nikde jinde v appce významové.
+private struct CategoryBadge: View {
+    let category: SoundCategory
+
+    private var tintColor: Color {
+        switch category {
+        case .pending:
+            return .gray
+        case .snoring:
+            return Color(red: 0.62, green: 0.56, blue: 0.95)
+        case .speech:
+            return .sleepTrackerAccent
+        case .flatulence:
+            return Color(red: 0.95, green: 0.75, blue: 0.30)
+        case .other:
+            return .gray
+        }
+    }
+
+    var body: some View {
+        Label(category.displayName, systemImage: category.symbolName)
+            .font(.caption.weight(.semibold))
+            .lineLimit(1)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 5)
+            .foregroundStyle(tintColor)
+            .background(Capsule().fill(tintColor.opacity(0.18)))
     }
 }
 

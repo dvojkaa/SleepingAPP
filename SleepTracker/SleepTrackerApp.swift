@@ -20,6 +20,12 @@ struct SleepTrackerApp: App {
     var body: some Scene {
         WindowGroup {
             NightsListView()
+                // Appka má jednotný tmavý "noční obloha" vzhled bez ohledu na
+                // systémové nastavení telefonu (viz `NightSkyBackgroundView`),
+                // proto se tu barevné schéma i zvýrazňující barva nastavují
+                // jednou centrálně a kaskádují do celé view hierarchie.
+                .preferredColorScheme(.dark)
+                .tint(Color.sleepTrackerAccent)
         }
         .modelContainer(sharedModelContainer)
     }

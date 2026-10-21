@@ -9,21 +9,31 @@ struct NightsListView: View {
 
     var body: some View {
         NavigationStack {
-            Group {
-                if nights.isEmpty {
-                    ContentUnavailableView(
-                        "Zatím žádné noci",
-                        systemImage: "moon.zzz",
-                        description: Text("Začni novou noc tlačítkem vpravo nahoře. Appka bude přes noc nahrávat jen úseky, kdy zaslechne zvuk.")
-                    )
-                } else {
-                    List {
-                        ForEach(nights) { night in
-                            NavigationLink(value: night) {
-                                NightRow(night: night)
+            ZStack {
+                NightSkyBackgroundView()
+
+                Group {
+                    if nights.isEmpty {
+                        ContentUnavailableView(
+                            "Zatím žádné noci",
+                            systemImage: "moon.zzz",
+                            description: Text("Začni novou noc tlačítkem vpravo nahoře. Appka bude přes noc nahrávat jen úseky, kdy zaslechne zvuk.")
+                        )
+                    } else {
+                        List {
+                            ForEach(nights) { night in
+                                NavigationLink(value: night) {
+                                    NightRow(night: night)
+                                }
+                                .listRowBackground(Color.clear)
+                                .listRowSeparator(.hidden)
+                                .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
                             }
+                            .onDelete(perform: deleteNights)
                         }
-                        .onDelete(perform: deleteNights)
+                        .listStyle(.plain)
+                        .scrollContentBackground(.hidden)
+                        .animation(.easeOut(duration: 0.3), value: nights)
                     }
                 }
             }
@@ -67,6 +77,8 @@ struct NightsListView: View {
     }
 }
 
+/// Jedna "karta" noci v historii – zaoblené rohy, jemný stín, tmavé pozadí
+/// konzistentní s "noční obloha" tématem appky.
 private struct NightRow: View {
     let night: Night
 
@@ -79,18 +91,25 @@ private struct NightRow: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: 6) {
             Text(night.startedAt, format: .dateTime.day().month().year())
                 .font(.headline)
+                .foregroundStyle(.white)
             HStack {
-                Text(durationText)
+                Label(durationText, systemImage: "clock")
                 Spacer()
-                Text("\(night.clips.count) klipů")
+                Label("\(night.clips.count) klipů", systemImage: "waveform")
             }
             .font(.subheadline)
-            .foregroundStyle(.secondary)
+            .foregroundStyle(.white.opacity(0.7))
         }
-        .padding(.vertical, 4)
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .fill(Color.white.opacity(0.08))
+        )
+        .shadow(color: .black.opacity(0.25), radius: 8, x: 0, y: 4)
     }
 }
 

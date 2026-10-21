@@ -132,7 +132,14 @@ neomezuje – ale pro soukromé použití to není nutné.)
 3. Ráno klepni na **"Ukončit noc"**.
 4. Noc se objeví v seznamu historie s datem a délkou spánku. Po otevření
    detailu noci uvidíš graf hlasitosti jednotlivých klipů v čase a pod ním
-   seznam všech klipů – každý s časem, délkou a tlačítkem přehrát/pauza.
+   seznam všech klipů – každý s časem, délkou, tlačítkem přehrát/pauza a
+   barevným štítkem s rozpoznaným typem zvuku (chrápání, mluvení, prdění
+   nebo "Jiný zvuk").
+
+Rozpoznání typu zvuku appka dělá přímo na telefonu (Apple's `SoundAnalysis`
+framework), bez internetu a bez dalšího oprávnění navíc – běží na pozadí po
+uložení každého klipu, proto klip chvilku po vzniku ukazuje "Zpracovává
+se…", než se štítek dopočítá.
 
 Všechna data (zvuky i jejich seznam) se ukládají pouze lokálně v telefonu
 (SwiftData + soubory ve složce appky `Documents/Nights/...`). Appka
@@ -154,6 +161,17 @@ Threshold`:
 
 Pokud appka zachytává příliš mnoho/málo, uprav tato čísla a appku znovu
 nahraj do telefonu (krok 3).
+
+Podobně jde doladit i rozpoznávání typu zvuku – v souboru
+`SleepTracker/SoundClassifierService.swift`, v `enum Threshold`:
+
+- `minimumClassificationConfidence` – pod touto jistotou (výchozí 0.4, tedy
+  40 %) appka klip radši označí jako "Jiný zvuk", i kdyby systémový
+  klasifikátor tipoval chrápání/mluvení/prdění.
+- `analysisWindowDurationSeconds` – délka analytického okna (výchozí 1.5 s).
+- `analysisOverlapFactor` – jak moc se po sobě jdoucí okna překrývají
+  (výchozí 0.5, tedy každé další okno se posune o polovinu své délky) – vyšší
+  hodnota znamená víc (pomalejších) výsledků na stejně dlouhý klip.
 
 ## Alternativa bez kabelu a bez 7denní expirace: SideStore
 
