@@ -1,0 +1,108 @@
+name: Sestavit .ipa a vydat SideStore release
+
+# Spustí se buď push tagu ve tvaru v1.0.0, nebo ručně z GitHub UI
+# (Actions -> Sestavit .ipa a vydat SideStore release -> Run workflow)
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Verze appky (např. 1.0.1) - použije se jen při ručním spuštění"
+        required: false
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: macos-14
+    steps:
+      - name: Checkout repozitáře
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Zjisti verzi appky
+        id: version
+        run: |
+          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
+            VERSION="${GITHUB_REF_NAME#v}"
+          else
+            VERSION="${{ github.event.inputs.version }}"
+            if [ -z "$VERSION" ]; then
+              echo "::error::Musíš buď pushnout tag v*.*.* nebo při ručním spuštění zadat verzi."
+              exit 1
+            fi
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Nainstaluj XcodeGen
+        run: brew install xcodegen
+
+      - name: Vygeneruj Xcode projekt
+        run: xcodegen generate
+
+      - name: Sestav nepodepsaný archiv
+        run: |
+          xcodebuild archive \
+            -project SleepTracker.xcodeproj \
+            -scheme SleepTracker \
+            -configuration Release \
+            -archivePath "$PWD/build/SleepTracker.xcarchive" \
+            -sdk iphoneos \
+            -destination "generic/platform=iOS" \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            DEVELOPMENT_TEAM="" \
+            MARKETING_VERSION="${{ steps.version.outputs.version }}" \
+            CURRENT_PROJECT_VERSION="${{ github.run_number }}"
+
+      - name: Zabal appku do .ipa
+        id: package
+        run: |
+          APP_PATH="build/SleepTracker.xcarchive/Products/Applications/SleepTracker.app"
+          if [ ! -d "$APP_PATH" ]; then
+            echo "::error::Nenalezen $APP_PATH - archiv se nejspíš nesestavil správně."
+            exit 1
+          fi
+          rm -rf Payload SleepTracker.ipa
+          mkdir Payload
+          cp -R "$APP_PATH" Payload/
+          ditto -c -k --keepParent Payload SleepTracker.ipa
+          SIZE=$(stat -f%z SleepTracker.ipa)
+          echo "size=$SIZE" >> "$GITHUB_OUTPUT"
+
+      - name: Vytvoř GitHub Release a nahraj .ipa
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.version.outputs.version }}
+          name: SleepTracker ${{ steps.version.outputs.version }}
+          files: SleepTracker.ipa
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Aktualizuj altstore-source.json na větvi main
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          git fetch origin main
+          git checkout main
+          git pull --ff-only origin main
+
+          python3 .github/scripts/update_source.py \
+            --version "${{ steps.version.outputs.version }}" \
+            --size "${{ steps.package.outputs.size }}" \
+            --repo "${{ github.repository }}"
+
+          git add altstore-source.json
+          if git diff --cached --quiet; then
+            echo "altstore-source.json beze změny, nic se nebude commitovat."
+          else
+            git commit -m "altstore-source.json: verze ${{ steps.version.outputs.version }}"
+            git push origin main
+          fi

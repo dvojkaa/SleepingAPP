@@ -152,3 +152,58 @@ Threshold`:
 
 Pokud appka zachytává příliš mnoho/málo, uprav tato čísla a appku znovu
 nahraj do telefonu (krok 3).
+
+## Alternativa bez kabelu a bez 7denní expirace: SideStore
+
+Postup výše (Xcode + kabel) je nejjednodušší na první vyzkoušení, ale appka
+po 7 dnech vyprší a musíš ji znovu nahrát z Macu. Pokud chceš appku používat
+dlouhodobě na dvou telefonech (tvém i přítelkynině) a nechceš kvůli tomu
+každý týden sedat k počítači, použij místo toho
+[SideStore](https://sidestore.io) – appku, která appky podepsané tvým
+bezplatným Apple ID umí sama obnovovat na pozadí přes Wi-Fi, bez trvalé
+závislosti na počítači (počítač je potřeba jen jednou, při úvodním spárování
+každého telefonu).
+
+### Jak appku vydávat přes SideStore
+
+Tenhle repozitář obsahuje:
+
+- `.github/workflows/release.yml` – GitHub Actions workflow, který appku
+  sestaví na macOS runneru **bez nutnosti vlastního Macu** (nepodepsaný
+  `.ipa`, SideStore appku podepíše sama při instalaci) a nahraje ji jako
+  GitHub Release.
+- `altstore-source.json` – tzv. "source" soubor, katalog appek pro
+  AltStore/SideStore. Obsahuje odkaz na nejnovější `.ipa` a appka si ho umí
+  pravidelně stahovat, aby věděla, že je k dispozici nová verze.
+
+Vydání nové verze:
+
+1. Commitni změny appky do `main`.
+2. Vytvoř a pushni git tag ve tvaru `vX.Y.Z`, např.:
+   ```bash
+   git tag v1.0.0
+   git push origin v1.0.0
+   ```
+   (nebo spusť workflow ručně v GitHub UI pod záložkou **Actions**, včetně
+   zadání verze – hodí se, když nechceš tagovat).
+3. Workflow appku sestaví, vytvoří GitHub Release s přiloženým `.ipa` a
+   automaticky aktualizuje `altstore-source.json` v `main` s odkazem na
+   novou verzi.
+
+### Jak appku přidat na telefon (tvůj i přítelkynin)
+
+1. Nainstaluj SideStore podle návodu na [sidestore.io](https://sidestore.io)
+   (jednorázově vyžaduje počítač na spárování zařízení).
+2. V SideStore přidej zdroj (source) s touto URL:
+   ```
+   https://raw.githubusercontent.com/dvojkaa/SleepingAPP/main/altstore-source.json
+   ```
+3. Appka "SleepTracker" se objeví v seznamu – nainstaluj ji přímo ze
+   SideStore.
+4. Při vydání nové verze appky (viz výše) stačí v SideStore kliknout na
+   **Update** – bez kabelu, bez Xcode.
+
+Pozor: pokud v `project.yml` změníš `PRODUCT_BUNDLE_IDENTIFIER`, uprav
+stejnou hodnotu i v `bundleIdentifier` v `altstore-source.json`, ať appka
+jde přes SideStore rozpoznat jako aktualizaci stávající appky, ne jako
+novou appku vedle ní.

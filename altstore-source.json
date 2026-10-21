@@ -1,0 +1,17 @@
+{
+  "name": "Vojtova AltStore source",
+  "identifier": "com.dvojkaa.sleepingapp.source",
+  "apps": [
+    {
+      "name": "SleepTracker",
+      "bundleIdentifier": "com.example.sleeptracker",
+      "developerName": "Vojta",
+      "subtitle": "Soukromé sledování zvuků ze spánku",
+      "localizedDescription": "Appka přes noc poslouchá mikrofon a ukládá jen úseky, kdy je slyšet mluvení nebo chrápání. Ráno appka ukáže přehled noci s grafem a přehrávačem klipů. Vše zůstává jen v telefonu.",
+      "iconURL": "https://raw.githubusercontent.com/dvojkaa/SleepingAPP/main/SleepTracker/Assets.xcassets/AppIcon.appiconset/icon-1024.png",
+      "tintColor": "4FD1C5",
+      "versions": []
+    }
+  ],
+  "news": []
+}
