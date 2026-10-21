@@ -127,7 +127,7 @@ final class AudioMonitorService: NSObject {
         static let endDB: Float = -40.0
         /// Jak dlouho musí hlasitost nepřetržitě zůstat pod endDB, než se
         /// klip skutečně ukončí. Tím vzniká "padding" ticha na konci klipu.
-        static let silenceHoldToEndClip: TimeInterval = 2.5
+        static let silenceHoldToEndClip: TimeInterval = 5.5
         /// Klipy kratší než toto se zahodí (typicky náhodný šum/šramot).
         static let minimumClipDuration: TimeInterval = 1.0
         /// Jak často se čte hlasitost z mikrofonu.

@@ -156,7 +156,10 @@ Threshold`:
 - `endDB` – pod touto hlasitostí appka považuje situaci za "ticho" (výchozí
   -40 dB, nižší než startDB kvůli hysterezi).
 - `silenceHoldToEndClip` – jak dlouho musí být ticho, než appka klip skutečně
-  ukončí (výchozí 2.5 s, aby se neuřízl konec zvuku).
+  ukončí (výchozí 5.5 s). Čím vyšší hodnota, tím méně se krátké pauzy mezi
+  zvuky (např. nádechy mezi chrápáním) rozsekávají na spoustu samostatných
+  klipů – appka prostě nahrává o pár sekund déle, než si je jistá, že zvuk
+  fakt skončil.
 - `minimumClipDuration` – kratší klipy se zahodí jako šum (výchozí 1 s).
 
 Pokud appka zachytává příliš mnoho/málo, uprav tato čísla a appku znovu
