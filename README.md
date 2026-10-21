@@ -62,10 +62,12 @@ Tím vznikne soubor `SleepTracker.xcodeproj`. Otevři ho (dvojklikem, nebo
 3. U pole **Team** vyber svoje Apple ID. Pokud tam ještě není, klikni na
    "Add an Account..." a přihlas se svým běžným Apple ID – bezplatný účet
    stačí.
-4. Pokud Xcode nahlásí, že bundle identifier `com.example.sleeptracker` už
-   někdo používá ("Failed to register bundle identifier"), změň ho v
-   `project.yml` (klíč `PRODUCT_BUNDLE_IDENTIFIER`) na něco unikátního, např.
-   `com.tvoje-jmeno.sleeptracker`, ulož a znovu spusť `xcodegen generate`.
+4. Pokud Xcode nahlásí, že bundle identifier `com.kratina.vojta.SleepTracker`
+   už někdo používá ("Failed to register bundle identifier"), změň ho v
+   `project.yml` (klíč `PRODUCT_BUNDLE_IDENTIFIER`) na něco jiného
+   unikátního, ulož, aktualizuj i `bundleIdentifier` v
+   `altstore-source.json` (ať sedí se SideStore zdrojem) a znovu spusť
+   `xcodegen generate`.
 
 ## 3. Nahrání appky do telefonu
 
