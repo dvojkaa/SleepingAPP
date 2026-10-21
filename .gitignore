@@ -1,0 +1,20 @@
+# Xcode projekt generovaný přes XcodeGen (viz project.yml) – negeneruje se ručně
+*.xcodeproj/
+*.xcworkspace/
+
+# Build artefakty
+DerivedData/
+build/
+*.ipa
+*.dSYM.zip
+*.dSYM
+
+# Uživatelská nastavení Xcode
+xcuserdata/
+*.xcuserstate
+
+# Generovaný Info.plist (vzniká při `xcodegen generate`)
+/Generated/
+
+# macOS
+.DS_Store
