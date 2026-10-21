@@ -10,7 +10,20 @@
       "localizedDescription": "Appka přes noc poslouchá mikrofon a ukládá jen úseky, kdy je slyšet mluvení nebo chrápání. Ráno appka ukáže přehled noci s grafem a přehrávačem klipů. Vše zůstává jen v telefonu.",
       "iconURL": "https://raw.githubusercontent.com/dvojkaa/SleepingAPP/main/SleepTracker/Assets.xcassets/AppIcon.appiconset/icon-1024.png",
       "tintColor": "4FD1C5",
-      "versions": []
+      "versions": [
+        {
+          "version": "1.0.1",
+          "date": "2026-10-21T11:37:55Z",
+          "localizedDescription": "Verze 1.0.1.",
+          "downloadURL": "https://github.com/dvojkaa/SleepingAPP/releases/download/v1.0.1/SleepTracker.ipa",
+          "size": 190107,
+          "minOSVersion": "17.0"
+        }
+      ],
+      "version": "1.0.1",
+      "versionDate": "2026-10-21T11:37:55Z",
+      "size": 190107,
+      "downloadURL": "https://github.com/dvojkaa/SleepingAPP/releases/download/v1.0.1/SleepTracker.ipa"
     }
   ],
   "news": []
